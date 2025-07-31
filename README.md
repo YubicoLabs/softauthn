@@ -4,6 +4,12 @@ softauthn provides an implementation of the [WebAuthn](https://www.w3.org/TR/202
 using the [`java-webauthn-server`](https://developers.yubico.com/java-webauthn-server/) library for data models. This makes it especially well-suited 
 to interface with code that uses that same library.
 
+# Status
+
+This is an experimental fork of the [original](https://github.com/adessoSE/softauthn), there is no support added. 
+
+This fork will feature even more experimental additions, use at your own risk.
+
 ## Purpose
 The primary purpose of this library is to enable developers to test their WebAuthn server implementations.
 E.g. you might have a web app that allows users to authenticate via WebAuthn and you want to unit test your 
@@ -12,53 +18,41 @@ like "real" ones in pure software.
 
 ## Installation
 
-Releases of this library can be found in Maven Central. Note that this project is still in its early stages and 
-therefore doesn't support all the features you might want to see yet. See [below](#Completeness) for more information.
+Releases of this library can be found in jitpack:
 
-Gradle (Kotlin DSL):
-```kotlin
-repositories {
-    mavenCentral()
-}
+Add it in your settings.gradle.kts at the end of repositories:
 
-dependencies {
-    implementation("io.github.adessose:softauthn:0.1.2")
-}
-```
+	dependencyResolutionManagement {
+		repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+		repositories {
+			mavenCentral()
+			maven { url = uri("https://www.jitpack.io") }
+		}
+	}
 
-Maven: 
-```xml
-<dependency>
-    <groupId>io.github.adessose</groupId>
-    <artifactId>softauthn</artifactId>
-    <version>0.1.2</version>
-</dependency>
-```
+Add the dependency
 
+	dependencies {
+		implementation("com.github.yubicolabs:softauthn:v0.0.1")
+	}
+
+That's it! The first time you request a project JitPack checks out the code, builds it and serves the build artifacts (jar, aar).
 
 ## Usage
 
-### Creating and Registering authenticators
-```java
-// Create an authenticator that will implement the functionality of a WebAuthn authenticator in pure software
-// This one mimics a modern USB key: it is external (cross-platform attachment),
-// can store keys internally and can verify users (e.g. via a pin code)
-var authenticator = WebAuthnAuthenticator.builder()
-        .attachment(AuthenticatorAttachment.CROSS_PLATFORM)
-        .supportClientSideDiscoverablePublicKeyCredentials(true)
-        .supportUserVerification(true)
-        .build();
+### Creating Credentials
+```kotlin
+val authenticator = Authenticators.yubikey5Nfc().build()
+val origin = URL("https://www.yubico.com").toOrigin()
 
-// alternatively, you can use one of the templates in the Authenticators class
-authenticator = Authenticators.yubikey5Nfc().build();
-// Create a credentials container (mimics the browser navigator.credentials API)
-// It will pretend its origin is https://example.com (no port, no extra domain)
-var origin = new Origin("https", "example.com", -1, null);
-var credentials = new CredentialsContainer(origin, List.of(authenticator));
-// Get the options for credential creation from your backend
-PublicKeyCredentialCreationOptions opts = startRegistration(...);
-PublicKeyCredential<AuthenticatorAttestationResponse, ClientRegistrationExtensionsResult> publicKeyCredential = credentials.create(opts);
-verifyAttestation(publicKeyCredential);
+val options = PublicKeyCredentialCreationOptions
+    .builder()
+     // add configuration here
+    .build()
+
+val container = CredentialsContainer(origin, listOf(authenticator))
+val credential = container.create(options)
+verifyAssertion(credential)
 ```
 
 ### Creating Assertions

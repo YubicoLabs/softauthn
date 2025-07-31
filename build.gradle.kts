@@ -1,30 +1,27 @@
 plugins {
     `java-library`
     `maven-publish`
-    signing
-    id("io.github.gradle-nexus.publish-plugin") version "1.1.0"
+    kotlin("jvm")
 }
 
-group = "io.github.adessose"
-version = "0.1.2"
-
-repositories {
-    mavenCentral()
-}
+version = "0.0.1"
 
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.0")
+    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
     implementation("com.augustcellars.cose:cose-java:1.1.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.14.0-rc2")
+
     api("com.yubico:webauthn-server-core:2.1.0")
 }
 
 java {
     withSourcesJar()
     withJavadocJar()
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_22
+    targetCompatibility = JavaVersion.VERSION_22
 }
 
 tasks.getByName<Test>("test") {
@@ -35,47 +32,9 @@ tasks.javadoc {
     (options as StandardJavadocDocletOptions).tags("apiNote:a:API Note:", "implNote:a:Implementation Note:")
 }
 
-publishing {
-
-    publications {
-        create<MavenPublication>("main") {
-            pom {
-                name.set("softauthn")
-                description.set("softauthn provides an implementation of the WebAuthn API and a software authenticator " +
-                        "in Java, using the java-webauthn-server library for data models. It can be used to test " +
-                        "WebAuthn backends.")
-                url.set("https://github.com/adessoSE/softauthn")
-                scm {
-                    url.set("https://github.com/adessoSE/softauthn")
-                }
-                licenses {
-                    license {
-                        name.set("MIT")
-                        url.set("https://mit-license.org")
-                    }
-                }
-                developers {
-                    developer {
-                        organization.set("adesso SE")
-                        organizationUrl.set("https://adesso.de")
-                    }
-                }
-            }
-            from(components["java"])
-        }
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
     }
-}
-
-nexusPublishing {
-    repositories {
-        sonatype {
-            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
-        }
-    }
-}
-
-signing {
-    useGpgCmd()
-    sign(publishing.publications)
 }
