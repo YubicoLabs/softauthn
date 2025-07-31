@@ -4,44 +4,20 @@ import COSE.AlgorithmID;
 import COSE.CoseException;
 import COSE.KeyKeys;
 import COSE.OneKey;
+import com.upokecenter.cbor.CBORObject;
+import com.yubico.webauthn.data.*;
 import de.adesso.softauthn.Authenticator;
 import de.adesso.softauthn.AuthenticatorAssertionData;
 import de.adesso.softauthn.Authenticators;
 import de.adesso.softauthn.PublicKeyCredentialSource;
 import de.adesso.softauthn.counter.SignatureCounter;
-import com.upokecenter.cbor.CBORObject;
-import com.yubico.webauthn.data.AuthenticatorAttachment;
-import com.yubico.webauthn.data.ByteArray;
-import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
-import com.yubico.webauthn.data.PublicKeyCredentialDescriptor;
-import com.yubico.webauthn.data.PublicKeyCredentialParameters;
-import com.yubico.webauthn.data.PublicKeyCredentialType;
-import com.yubico.webauthn.data.RelyingPartyIdentity;
-import com.yubico.webauthn.data.UserIdentity;
 import net.i2p.crypto.eddsa.EdDSASecurityProvider;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
-import java.security.Security;
-import java.security.Signature;
-import java.security.SignatureException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.security.*;
+import java.util.*;
 import java.util.function.Function;
 
 /**
@@ -73,14 +49,15 @@ public class WebAuthnAuthenticator implements Authenticator {
     }
 
     private final SecureRandom random;
-    private final Map<SourceKey, PublicKeyCredentialSource> storedSources;
+    public final Map<SourceKey, PublicKeyCredentialSource> storedSources;
 
-    private final byte[] aaguid;
+    public final byte[] aaguid;
     private final AuthenticatorAttachment attachment;
-    private final Set<COSEAlgorithmIdentifier> supportedAlgorithms;
-    private final boolean supportsClientSideDiscoverablePublicKeyCredentialSources;
+    public final Set<COSEAlgorithmIdentifier> supportedAlgorithms;
 
-    private final boolean supportsUserVerification;
+    public final boolean supportsClientSideDiscoverablePublicKeyCredentialSources;
+
+    public final boolean supportsUserVerification;
 
     private final SignatureCounter signatureCounter;
 
@@ -99,7 +76,7 @@ public class WebAuthnAuthenticator implements Authenticator {
             throw new IllegalArgumentException("aaguid must be 16 bytes");
         }
         this.aaguid = aaguid;
-        this.attachment = Objects.requireNonNull(attachment);;
+        this.attachment = Objects.requireNonNull(attachment);
         this.supportedAlgorithms = EnumSet.copyOf(Objects.requireNonNull(supportedAlgorithms));
         this.supportsClientSideDiscoverablePublicKeyCredentialSources = supportsClientSideDiscoverablePublicKeyCredentialSources;
         this.supportsUserVerification = supportsUserVerification;
@@ -377,11 +354,11 @@ public class WebAuthnAuthenticator implements Authenticator {
         return supportsUserVerification;
     }
 
-    private static final class SourceKey {
-        final String rpId;
-        final ByteArray userHandle;
+    public static class SourceKey {
+        public final String rpId;
+        public final ByteArray userHandle;
 
-        SourceKey(String rpId, ByteArray userHandle) {
+        public SourceKey(String rpId, ByteArray userHandle) {
             this.rpId = rpId;
             this.userHandle = userHandle;
         }
