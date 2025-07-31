@@ -33,8 +33,8 @@ Add it in your settings.gradle.kts at the end of repositories:
 Add the dependency
 
 	dependencies {
-		implementation("com.github.yubicolabs:softauthn:v0.0.1")
-	}
+        implementation("com.github.yubicolabs:softauthn:main-SNAPSHOT")
+    }
 
 That's it! The first time you request a project JitPack checks out the code, builds it and serves the build artifacts (jar, aar).
 
