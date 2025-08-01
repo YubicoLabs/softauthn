@@ -4,45 +4,23 @@ import COSE.AlgorithmID;
 import COSE.CoseException;
 import COSE.KeyKeys;
 import COSE.OneKey;
+import com.upokecenter.cbor.CBORObject;
+import com.yubico.webauthn.data.*;
 import de.adesso.softauthn.Authenticator;
 import de.adesso.softauthn.AuthenticatorAssertionData;
 import de.adesso.softauthn.Authenticators;
 import de.adesso.softauthn.PublicKeyCredentialSource;
+import de.adesso.softauthn.authenticator.functional.CredentialSelectionFunction;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
+import de.adesso.softauthn.authenticator.functional.exception.MutipleSourcesFoundException;
 import de.adesso.softauthn.counter.SignatureCounter;
-import com.upokecenter.cbor.CBORObject;
-import com.yubico.webauthn.data.AuthenticatorAttachment;
-import com.yubico.webauthn.data.ByteArray;
-import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
-import com.yubico.webauthn.data.PublicKeyCredentialDescriptor;
-import com.yubico.webauthn.data.PublicKeyCredentialParameters;
-import com.yubico.webauthn.data.PublicKeyCredentialType;
-import com.yubico.webauthn.data.RelyingPartyIdentity;
-import com.yubico.webauthn.data.UserIdentity;
 import net.i2p.crypto.eddsa.EdDSASecurityProvider;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
-import java.security.Security;
-import java.security.Signature;
-import java.security.SignatureException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Function;
+import java.security.*;
+import java.util.*;
 
 /**
  * An implementation of {@link Authenticator} that attempts to cover most of the
@@ -73,18 +51,19 @@ public class WebAuthnAuthenticator implements Authenticator {
     }
 
     private final SecureRandom random;
-    private final Map<SourceKey, PublicKeyCredentialSource> storedSources;
+    public final Map<SourceKey, PublicKeyCredentialSource> storedSources;
 
-    private final byte[] aaguid;
+    public final byte[] aaguid;
     private final AuthenticatorAttachment attachment;
-    private final Set<COSEAlgorithmIdentifier> supportedAlgorithms;
-    private final boolean supportsClientSideDiscoverablePublicKeyCredentialSources;
+    public final Set<COSEAlgorithmIdentifier> supportedAlgorithms;
 
-    private final boolean supportsUserVerification;
+    public final boolean supportsClientSideDiscoverablePublicKeyCredentialSources;
+
+    public final boolean supportsUserVerification;
 
     private final SignatureCounter signatureCounter;
 
-    private Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection;
+    private CredentialSelectionFunction credentialSelection;
 
     protected WebAuthnAuthenticator(
             byte[] aaguid,
@@ -93,13 +72,13 @@ public class WebAuthnAuthenticator implements Authenticator {
             boolean supportsClientSideDiscoverablePublicKeyCredentialSources,
             boolean supportsUserVerification,
             SignatureCounter signatureCounter,
-            Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection
+            CredentialSelectionFunction credentialSelection
     ) {
         if (aaguid.length != 16) {
             throw new IllegalArgumentException("aaguid must be 16 bytes");
         }
         this.aaguid = aaguid;
-        this.attachment = Objects.requireNonNull(attachment);;
+        this.attachment = Objects.requireNonNull(attachment);
         this.supportedAlgorithms = EnumSet.copyOf(Objects.requireNonNull(supportedAlgorithms));
         this.supportsClientSideDiscoverablePublicKeyCredentialSources = supportsClientSideDiscoverablePublicKeyCredentialSources;
         this.supportsUserVerification = supportsUserVerification;
@@ -220,7 +199,7 @@ public class WebAuthnAuthenticator implements Authenticator {
             String rpId, byte[] hash,
             List<PublicKeyCredentialDescriptor> allowedCredentialDescriptorList,
             boolean requireUserVerification, byte[] extensions
-    ) {
+    ) throws MultipleAssertionDataException {
         Set<PublicKeyCredentialSource> credentialOptions = new HashSet<>();
         if (allowedCredentialDescriptorList != null) {
             for (PublicKeyCredentialDescriptor descriptor : allowedCredentialDescriptorList) {
@@ -238,9 +217,24 @@ public class WebAuthnAuthenticator implements Authenticator {
             throw new UnsupportedOperationException("Authenticator does not support user verification");
         }
 
-        PublicKeyCredentialSource selectedCredential
-                = credentialSelection.apply(Collections.unmodifiableSet(credentialOptions));
+        try {
+            PublicKeyCredentialSource selectedCredential = credentialSelection.apply(Collections.unmodifiableSet(credentialOptions));
+            return authenticatorAssertionDataFromCredential(rpId, requireUserVerification, hash, selectedCredential);
+        } catch (MutipleSourcesFoundException mutipleSourcesFoundException) {
+            throw new MultipleAssertionDataException(
+                    mutipleSourcesFoundException.getSources().stream().map(source ->
+                            authenticatorAssertionDataFromCredential(rpId, requireUserVerification, hash, source)
+                    ).toList()
+            );
+        }
+    }
 
+    private AuthenticatorAssertionData authenticatorAssertionDataFromCredential(
+            String rpId,
+            boolean requireUserVerification,
+            byte[] hash,
+            PublicKeyCredentialSource selectedCredential
+    ) {
         // TODO: 12/09/2022 handle extensions
         byte[] processedExtensions = null;
         int signatureCount = signatureCounter.increment(selectedCredential.getId());
@@ -265,7 +259,6 @@ public class WebAuthnAuthenticator implements Authenticator {
         return new AuthenticatorAssertionData(selectedCredential.getId(),
                 new ByteArray(authenticatorData), new ByteArray(signature),
                 selectedCredential.getUserHandle());
-
     }
 
     private Optional<PublicKeyCredentialSource> lookup(ByteArray credentialId) {
@@ -377,11 +370,11 @@ public class WebAuthnAuthenticator implements Authenticator {
         return supportsUserVerification;
     }
 
-    private static final class SourceKey {
-        final String rpId;
-        final ByteArray userHandle;
+    public static class SourceKey {
+        public final String rpId;
+        public final ByteArray userHandle;
 
-        SourceKey(String rpId, ByteArray userHandle) {
+        public SourceKey(String rpId, ByteArray userHandle) {
             this.rpId = rpId;
             this.userHandle = userHandle;
         }

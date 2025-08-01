@@ -2,40 +2,26 @@ package de.adesso.softauthn;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.upokecenter.cbor.CBORObject;
-import com.yubico.webauthn.data.AttestationConveyancePreference;
-import com.yubico.webauthn.data.AuthenticatorAssertionResponse;
-import com.yubico.webauthn.data.AuthenticatorAttestationResponse;
-import com.yubico.webauthn.data.AuthenticatorSelectionCriteria;
-import com.yubico.webauthn.data.ByteArray;
-import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
-import com.yubico.webauthn.data.ClientAssertionExtensionOutputs;
-import com.yubico.webauthn.data.ClientRegistrationExtensionOutputs;
-import com.yubico.webauthn.data.PublicKeyCredential;
-import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions;
-import com.yubico.webauthn.data.PublicKeyCredentialDescriptor;
-import com.yubico.webauthn.data.PublicKeyCredentialParameters;
-import com.yubico.webauthn.data.PublicKeyCredentialRequestOptions;
-import com.yubico.webauthn.data.ResidentKeyRequirement;
-import com.yubico.webauthn.data.UserVerificationRequirement;
+import com.yubico.webauthn.data.*;
 import com.yubico.webauthn.data.exception.Base64UrlException;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
+import de.adesso.softauthn.authenticator.functional.exception.MutiplePublicKeysFoundException;
+import de.adesso.softauthn.serialization.CredentialsDeserializer;
+import de.adesso.softauthn.serialization.CredentialsSerializer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 // TODO: 14/09/2022 remove yubico dependency, write own required data structures with json serialisation support
+
 /**
  * This class emulates the behaviour of the <a href="https://developer.mozilla.org/en-US/docs/Web/API/CredentialsContainer">CredentialsContainer</a>
  * browser API for WebAuthn credentials, allowing you to create and get WebAuthn credentials, similar to how you would use
@@ -50,15 +36,15 @@ import java.util.Set;
  */
 public class CredentialsContainer {
 
-    private final Origin origin;
-    private final List<Authenticator> authenticators;
+    public final Origin origin;
+    public final List<Authenticator> authenticators;
 
     private final ObjectMapper mapper;
 
     /**
      * Creates a new CredentialsContainer with the specified {@link Origin} and a list of "known" authenticators.
      *
-     * @param origin The origin of the emulated "context".
+     * @param origin         The origin of the emulated "context".
      * @param authenticators A list of authenticators that are available to this container.
      *                       This list will be queried to create/get WebAuthn credentials.
      */
@@ -76,7 +62,7 @@ public class CredentialsContainer {
      *                  provided by the Relying Party.
      * @return The newly created <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#publickeycredential">PublicKeyCredential</a>.
      * @throws IllegalArgumentException if the parameters are malformed in any way or some security check fails
-     * @throws IllegalStateException if an authenticator throws one.
+     * @throws IllegalStateException    if an authenticator throws one.
      * @see <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#sctn-createCredential">Create a New Credential</a>
      */
     public PublicKeyCredential<AuthenticatorAttestationResponse, ClientRegistrationExtensionOutputs> create(
@@ -90,7 +76,7 @@ public class CredentialsContainer {
             PublicKeyCredentialCreationOptions options,
             boolean sameOriginWithAncestors
     ) {
-        
+
         checkParameters(options.getRp().getId(), origin, sameOriginWithAncestors);
         // 9-10.
         List<PublicKeyCredentialParameters> credTypesAndPubKeyAlgs = options.getPubKeyCredParams().isEmpty()
@@ -212,8 +198,9 @@ public class CredentialsContainer {
      * @param publicKey The <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#dictdef-publickeycredentialrequestoptions">PublicKeyCredentialRequestOptions</a>
      *                  provided by the Relying Party.
      * @return The <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#publickeycredential">PublicKeyCredential</a> object with the assertion.
-     * @throws IllegalArgumentException if any of the parameters are malformed in any way or a security check fails.
-     * @throws RuntimeException if any other unexpected exception occurs during the assertion process.
+     * @throws IllegalArgumentException        if any of the parameters are malformed in any way or a security check fails.
+     * @throws RuntimeException                if any other unexpected exception occurs during the assertion process.
+     * @throws MutiplePublicKeysFoundException if more than one public key credential was found.
      * @implNote This implementation does not pre-filter the list of allowed credentials for every authenticator.
      * Instead, it passes the full list of allowed credential to every requested authenticator.
      * Furthermore, it performs no filtering based on available transports because that is not relevant to software authenticators.
@@ -221,13 +208,13 @@ public class CredentialsContainer {
      */
     public PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> get(
             PublicKeyCredentialRequestOptions publicKey
-    ) {
+    ) throws MutiplePublicKeysFoundException {
         return discoverFromExternalSource(origin, publicKey, true);
     }
 
     private PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> discoverFromExternalSource(
             Origin origin, PublicKeyCredentialRequestOptions options, boolean sameOriginWithAncestors
-    ) {
+    ) throws MutiplePublicKeysFoundException {
         checkParameters(options.getRpId(), origin, sameOriginWithAncestors);
         ClientData clientData = collectClientData("webauthn.get", options.getChallenge(), origin, sameOriginWithAncestors);
         for (Authenticator authenticator : authenticators) {
@@ -257,6 +244,24 @@ public class CredentialsContainer {
                         allowCredentials.isEmpty() ? null : allowCredentials,
                         userVerification,
                         null
+                );
+            } catch (MultipleAssertionDataException e) {
+                throw new MutiplePublicKeysFoundException(
+                        e.getAuthenticatorAssertionData()
+                                .stream()
+                                .map(authenticatorAssertionData -> {
+                                            if (credentialId != null) {
+                                                authenticatorAssertionData.setCredentialId(credentialId);
+                                            }
+
+                                            try {
+                                                return constructAssertionAlg(authenticatorAssertionData, clientData);
+                                            } catch (Exception ex) {
+                                                return null;
+                                            }
+                                        }
+                                ).filter(Objects::nonNull)
+                                .toList()
                 );
             } catch (RuntimeException e) {
                 continue;
@@ -307,7 +312,7 @@ public class CredentialsContainer {
         // TODO: 25/08/2022 validate domain
         // 8. skip rpId check, it's always set by Relying Party
     }
-    
+
     private Map<String, String> processExtensions() {
         // TODO: 25/08/2022 handle extensions
         return new HashMap<>();
@@ -347,4 +352,45 @@ public class CredentialsContainer {
         }
     }
 
+    /**
+     * Create a binary representation of this container, to be saved and restored
+     *
+     * @return
+     * @see #deserialize
+     */
+    public byte[] serialize() {
+        final var mapper = new ObjectMapper();
+        final var module = new SimpleModule();
+
+        module.addSerializer(CredentialsContainer.class, new CredentialsSerializer());
+        mapper.registerModule(module);
+
+        try {
+            final var serialized = mapper.writeValueAsString(this);
+            return serialized.getBytes(StandardCharsets.UTF_8);
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Load a serialized
+     *
+     * @param payload
+     * @return a CredentialsContainer representing that payload, or null if error happened
+     */
+    public static CredentialsContainer deserialize(byte[] payload) {
+        final var mapper = new ObjectMapper();
+        final var module = new SimpleModule();
+
+        module.addDeserializer(CredentialsContainer.class, new CredentialsDeserializer());
+        mapper.registerModule(module);
+
+        try {
+            final var deserialized = mapper.readValue(payload, CredentialsContainer.class);
+            return deserialized;
+        } catch (IOException e) {
+            return null;
+        }
+    }
 }
