@@ -10,6 +10,9 @@ import de.adesso.softauthn.Authenticator;
 import de.adesso.softauthn.AuthenticatorAssertionData;
 import de.adesso.softauthn.Authenticators;
 import de.adesso.softauthn.PublicKeyCredentialSource;
+import de.adesso.softauthn.authenticator.functional.CredentialSelectionFunction;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
+import de.adesso.softauthn.authenticator.functional.exception.MutipleSourcesFoundException;
 import de.adesso.softauthn.counter.SignatureCounter;
 import net.i2p.crypto.eddsa.EdDSASecurityProvider;
 
@@ -18,7 +21,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.*;
-import java.util.function.Function;
 
 /**
  * An implementation of {@link Authenticator} that attempts to cover most of the
@@ -61,7 +63,7 @@ public class WebAuthnAuthenticator implements Authenticator {
 
     private final SignatureCounter signatureCounter;
 
-    private Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection;
+    private CredentialSelectionFunction credentialSelection;
 
     protected WebAuthnAuthenticator(
             byte[] aaguid,
@@ -70,7 +72,7 @@ public class WebAuthnAuthenticator implements Authenticator {
             boolean supportsClientSideDiscoverablePublicKeyCredentialSources,
             boolean supportsUserVerification,
             SignatureCounter signatureCounter,
-            Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection
+            CredentialSelectionFunction credentialSelection
     ) {
         if (aaguid.length != 16) {
             throw new IllegalArgumentException("aaguid must be 16 bytes");
@@ -197,7 +199,7 @@ public class WebAuthnAuthenticator implements Authenticator {
             String rpId, byte[] hash,
             List<PublicKeyCredentialDescriptor> allowedCredentialDescriptorList,
             boolean requireUserVerification, byte[] extensions
-    ) {
+    ) throws MultipleAssertionDataException {
         Set<PublicKeyCredentialSource> credentialOptions = new HashSet<>();
         if (allowedCredentialDescriptorList != null) {
             for (PublicKeyCredentialDescriptor descriptor : allowedCredentialDescriptorList) {
@@ -215,9 +217,24 @@ public class WebAuthnAuthenticator implements Authenticator {
             throw new UnsupportedOperationException("Authenticator does not support user verification");
         }
 
-        PublicKeyCredentialSource selectedCredential
-                = credentialSelection.apply(Collections.unmodifiableSet(credentialOptions));
+        try {
+            PublicKeyCredentialSource selectedCredential = credentialSelection.apply(Collections.unmodifiableSet(credentialOptions));
+            return authenticatorAssertionDataFromCredential(rpId, requireUserVerification, hash, selectedCredential);
+        } catch (MutipleSourcesFoundException mutipleSourcesFoundException) {
+            throw new MultipleAssertionDataException(
+                    mutipleSourcesFoundException.getSources().stream().map(source ->
+                            authenticatorAssertionDataFromCredential(rpId, requireUserVerification, hash, source)
+                    ).toList()
+            );
+        }
+    }
 
+    private AuthenticatorAssertionData authenticatorAssertionDataFromCredential(
+            String rpId,
+            boolean requireUserVerification,
+            byte[] hash,
+            PublicKeyCredentialSource selectedCredential
+    ) {
         // TODO: 12/09/2022 handle extensions
         byte[] processedExtensions = null;
         int signatureCount = signatureCounter.increment(selectedCredential.getId());
@@ -242,7 +259,6 @@ public class WebAuthnAuthenticator implements Authenticator {
         return new AuthenticatorAssertionData(selectedCredential.getId(),
                 new ByteArray(authenticatorData), new ByteArray(signature),
                 selectedCredential.getUserHandle());
-
     }
 
     private Optional<PublicKeyCredentialSource> lookup(ByteArray credentialId) {

@@ -1,22 +1,16 @@
 package de.adesso.softauthn;
 
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.upokecenter.cbor.CBORObject;
 import com.yubico.webauthn.data.*;
 import com.yubico.webauthn.data.exception.Base64UrlException;
-import de.adesso.softauthn.authenticator.WebAuthnAuthenticator;
-import de.adesso.softauthn.authenticator.WebAuthnAuthenticator.SourceKey;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
+import de.adesso.softauthn.authenticator.functional.exception.MutiplePublicKeysFoundException;
+import de.adesso.softauthn.serialization.CredentialsDeserializer;
+import de.adesso.softauthn.serialization.CredentialsSerializer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.stream.Stream;
 
 // TODO: 14/09/2022 remove yubico dependency, write own required data structures with json serialisation support
 
@@ -43,8 +36,8 @@ import java.util.stream.Stream;
  */
 public class CredentialsContainer {
 
-    final Origin origin;
-    final List<Authenticator> authenticators;
+    public final Origin origin;
+    public final List<Authenticator> authenticators;
 
     private final ObjectMapper mapper;
 
@@ -205,8 +198,9 @@ public class CredentialsContainer {
      * @param publicKey The <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#dictdef-publickeycredentialrequestoptions">PublicKeyCredentialRequestOptions</a>
      *                  provided by the Relying Party.
      * @return The <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#publickeycredential">PublicKeyCredential</a> object with the assertion.
-     * @throws IllegalArgumentException if any of the parameters are malformed in any way or a security check fails.
-     * @throws RuntimeException         if any other unexpected exception occurs during the assertion process.
+     * @throws IllegalArgumentException        if any of the parameters are malformed in any way or a security check fails.
+     * @throws RuntimeException                if any other unexpected exception occurs during the assertion process.
+     * @throws MutiplePublicKeysFoundException if more than one public key credential was found.
      * @implNote This implementation does not pre-filter the list of allowed credentials for every authenticator.
      * Instead, it passes the full list of allowed credential to every requested authenticator.
      * Furthermore, it performs no filtering based on available transports because that is not relevant to software authenticators.
@@ -214,13 +208,13 @@ public class CredentialsContainer {
      */
     public PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> get(
             PublicKeyCredentialRequestOptions publicKey
-    ) {
+    ) throws MutiplePublicKeysFoundException {
         return discoverFromExternalSource(origin, publicKey, true);
     }
 
     private PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> discoverFromExternalSource(
             Origin origin, PublicKeyCredentialRequestOptions options, boolean sameOriginWithAncestors
-    ) {
+    ) throws MutiplePublicKeysFoundException {
         checkParameters(options.getRpId(), origin, sameOriginWithAncestors);
         ClientData clientData = collectClientData("webauthn.get", options.getChallenge(), origin, sameOriginWithAncestors);
         for (Authenticator authenticator : authenticators) {
@@ -250,6 +244,24 @@ public class CredentialsContainer {
                         allowCredentials.isEmpty() ? null : allowCredentials,
                         userVerification,
                         null
+                );
+            } catch (MultipleAssertionDataException e) {
+                throw new MutiplePublicKeysFoundException(
+                        e.getAuthenticatorAssertionData()
+                                .stream()
+                                .map(authenticatorAssertionData -> {
+                                            if (credentialId != null) {
+                                                authenticatorAssertionData.setCredentialId(credentialId);
+                                            }
+
+                                            try {
+                                                return constructAssertionAlg(authenticatorAssertionData, clientData);
+                                            } catch (Exception ex) {
+                                                return null;
+                                            }
+                                        }
+                                ).filter(Objects::nonNull)
+                                .toList()
                 );
             } catch (RuntimeException e) {
                 continue;
@@ -371,7 +383,7 @@ public class CredentialsContainer {
         final var mapper = new ObjectMapper();
         final var module = new SimpleModule();
 
-        module.addDeserializer(CredentialsContainer.class, new CredentialsDeserializer(CredentialsContainer.class));
+        module.addDeserializer(CredentialsContainer.class, new CredentialsDeserializer());
         mapper.registerModule(module);
 
         try {
@@ -379,156 +391,6 @@ public class CredentialsContainer {
             return deserialized;
         } catch (IOException e) {
             return null;
-        }
-    }
-
-    public class CredentialsSerializer extends StdSerializer<CredentialsContainer> {
-        public CredentialsSerializer() {
-            this(null);
-        }
-
-        public CredentialsSerializer(Class<CredentialsContainer> t) {
-            super(t);
-        }
-
-        @Override
-        public void serialize(CredentialsContainer credentialsContainer, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
-            jsonGenerator.writeStartObject();
-
-            jsonGenerator.writeObjectField("origin.scheme", credentialsContainer.origin.getScheme());
-            jsonGenerator.writeObjectField("origin.host", credentialsContainer.origin.getHost());
-            if (credentialsContainer.origin.getPort().isPresent()) {
-                jsonGenerator.writeObjectField("origin.port", credentialsContainer.origin.getPort());
-            }
-            if (credentialsContainer.origin.getDomain().isPresent()) {
-                jsonGenerator.writeObjectField("origin.domain", credentialsContainer.origin.getDomain());
-            }
-
-            jsonGenerator.writeArrayFieldStart("authenticators");
-            for (final var authenticator : authenticators) {
-                if (authenticator instanceof WebAuthnAuthenticator web) {
-                    jsonGenerator.writeStartObject();
-                    jsonGenerator.writeStringField("type", authenticator.getClass().getSimpleName());
-
-                    jsonGenerator.writeObjectField("aaguid", web.aaguid);
-                    jsonGenerator.writeObjectField("attachment", web.getAttachment());
-                    jsonGenerator.writeObjectField("supportedAlgorithms", web.supportedAlgorithms);
-                    jsonGenerator.writeObjectField("supportsClientSideDiscoverablePublicKeyCredentialSources", web.supportsClientSideDiscoverablePublicKeyCredentialSources);
-                    jsonGenerator.writeObjectField("supportsUserVerification", web.supportsUserVerification);
-                    jsonGenerator.writeArrayFieldStart("storedSources");
-
-                    for (final var key : web.storedSources.keySet()) {
-                        jsonGenerator.writeStartObject();
-
-                        jsonGenerator.writeObjectField("key.rpId", key.rpId);
-                        jsonGenerator.writeStringField("key.userHandle", key.userHandle.getBase64());
-
-                        final var value = web.storedSources.get(key);
-                        jsonGenerator.writeObjectField("value", value.serialize());
-
-                        jsonGenerator.writeEndObject();
-                    }
-
-                    jsonGenerator.writeEndArray();
-
-                    jsonGenerator.writeEndObject();
-                }
-            }
-            jsonGenerator.writeEndArray();
-            jsonGenerator.writeEndObject();
-        }
-    }
-
-    public static class CredentialsDeserializer extends StdDeserializer<CredentialsContainer> {
-        protected CredentialsDeserializer(Class<?> vc) {
-            super(vc);
-        }
-
-        @Override
-        public CredentialsContainer deserialize(JsonParser p, DeserializationContext ctxt) throws IOException, JacksonException {
-            JsonNode jsonNode = p.readValueAsTree();
-            final var scheme = jsonNode.get("origin.scheme").asText();
-            final var host = jsonNode.get("origin.host").asText();
-            final var port = jsonNode.has("origin.port") ? jsonNode.get("origin.port").asInt() : -1;
-            final var domain = jsonNode.has("origin.domain") ? jsonNode.get("origin.domain").asText() : null;
-
-            final var origin = new Origin(scheme, host, port, domain);
-
-            final var authenticators = new ArrayList<Authenticator>();
-            jsonNode.get("authenticators").elements().forEachRemaining(jsonAuthenticator -> {
-                Authenticator authenticator = null;
-                if (jsonAuthenticator.get("type").asText().equals("WebAuthnAuthenticator")) {
-                    final var aaguid = ByteArray.fromBase64(jsonAuthenticator.get("aaguid").asText());
-
-                    final var jsonAttachment = jsonAuthenticator.get("attachment").asText();
-                    final var attachment = Stream.of(AuthenticatorAttachment.values()).filter(v ->
-                            v.getValue().equals(jsonAttachment)
-                    ).findAny().orElse(null);
-
-                    final var supportedAlgorithms = new ArrayList<COSEAlgorithmIdentifier>();
-                    jsonAuthenticator.get("supportedAlgorithms")
-                            .elements()
-                            .forEachRemaining(jsonAlgorithm ->
-                                    supportedAlgorithms.add(
-                                            COSEAlgorithmIdentifier.fromId(
-                                                    jsonAlgorithm.asInt()
-                                            ).orElse(null)
-                                    )
-                            );
-
-                    final var supportsClientSideDiscoverablePublicKeyCredentialSources = jsonAuthenticator
-                            .get("supportsClientSideDiscoverablePublicKeyCredentialSources").asBoolean(true);
-
-                    final var supportsUserVerification = jsonAuthenticator
-                            .get("supportsUserVerification").asBoolean(true);
-
-                    final var storedSources = new HashMap<SourceKey, PublicKeyCredentialSource>();
-                    jsonAuthenticator.get("storedSources").elements().forEachRemaining(jsonSource -> {
-                        try {
-                            final var rpId = jsonSource.get("key.rpId").asText();
-                            final var userHandle = ByteArray.fromBase64Url(jsonSource.get("key.userHandle").asText());
-                            final var key = new SourceKey(rpId, userHandle);
-
-                            final var value = PublicKeyCredentialSource.deserialize(
-                                    ByteArray.fromBase64(jsonSource.get("value").asText())
-                            ).orElse(null);
-
-                            storedSources.put(key, value);
-                        } catch (NoSuchElementException | Base64UrlException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                    });
-
-                    final var webauth = WebAuthnAuthenticator.builder()
-                            .aaguid(aaguid.getBytes())
-                            .attachment(attachment)
-                            .supportAlgorithms(supportedAlgorithms)
-                            .supportClientSideDiscoverablePublicKeyCredentialSources(
-                                    supportsClientSideDiscoverablePublicKeyCredentialSources
-                            )
-                            .supportUserVerification(
-                                    supportsUserVerification
-                            )
-                            .build();
-
-                    webauth.storedSources.clear();
-                    webauth.storedSources.putAll(storedSources);
-
-                    authenticator = webauth;
-                }
-
-                if (authenticator != null) {
-                    authenticators.add(authenticator);
-                } else {
-                    throw new IllegalStateException("Authenticator no webauthnAuthenticator");
-                }
-            });
-
-
-            final var result = new CredentialsContainer(origin, authenticators);
-
-            return result;
         }
     }
 }
