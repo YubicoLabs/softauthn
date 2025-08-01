@@ -1,10 +1,11 @@
 package de.adesso.softauthn.authenticator;
 
-import de.adesso.softauthn.PublicKeyCredentialSource;
-import de.adesso.softauthn.counter.PerCredentialSignatureCounter;
-import de.adesso.softauthn.counter.SignatureCounter;
 import com.yubico.webauthn.data.AuthenticatorAttachment;
 import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
+import de.adesso.softauthn.PublicKeyCredentialSource;
+import de.adesso.softauthn.authenticator.functional.CredentialSelectionFunction;
+import de.adesso.softauthn.counter.PerCredentialSignatureCounter;
+import de.adesso.softauthn.counter.SignatureCounter;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -22,8 +23,7 @@ public class WebAuthnAuthenticatorBuilder {
     private boolean supportsClientSideDiscoverablePublicKeyCredentialSources = true;
     private boolean supportsUserVerification = true;
     private SignatureCounter signatureCounter = new PerCredentialSignatureCounter();
-    private Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection
-            = creds -> creds.iterator().next();
+    private CredentialSelectionFunction credentialSelection = new CredentialSelectionFunction();
 
     /**
      * The aaguid of the resulting authenticator.
@@ -104,11 +104,12 @@ public class WebAuthnAuthenticatorBuilder {
 
     /**
      * Set the function that will be called if multiple credentials have been found that match the requirements set by the relying party.
+     *
      * @param credentialSelection A function that takes a set of credential sources and emulates the selection of one by the user.
-     *                           Default: always select the first authenticator in the set (i.e., no defined priority)
+     *                            Default: always select the first authenticator in the set (i.e., no defined priority)
      * @return this.
      */
-    public WebAuthnAuthenticatorBuilder credentialSelection(Function<? super Set<PublicKeyCredentialSource>, PublicKeyCredentialSource> credentialSelection) {
+    public WebAuthnAuthenticatorBuilder credentialSelection(CredentialSelectionFunction credentialSelection) {
         this.credentialSelection = credentialSelection;
         return this;
     }

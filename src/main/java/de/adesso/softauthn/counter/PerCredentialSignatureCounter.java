@@ -36,7 +36,14 @@ public class PerCredentialSignatureCounter implements SignatureCounter {
 
     @Override
     public int increment(ByteArray credentialId) {
-        return signatureCounts.computeIfPresent(credentialId, (id, c) -> c + increment);
+        if (signatureCounts.get(credentialId) != null) {
+            int oldValue = signatureCounts.get(credentialId);
+            int newValue = oldValue + increment;
+            signatureCounts.put(credentialId, newValue);
+            return newValue;
+        } else {
+            return 0;
+        }
     }
 
     @Override

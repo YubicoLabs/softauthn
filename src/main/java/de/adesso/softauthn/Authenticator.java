@@ -7,6 +7,7 @@ import com.yubico.webauthn.data.PublicKeyCredentialParameters;
 import com.yubico.webauthn.data.RelyingPartyIdentity;
 import com.yubico.webauthn.data.UserIdentity;
 import de.adesso.softauthn.authenticator.WebAuthnAuthenticator;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -77,6 +78,7 @@ public interface Authenticator {
      * @return The result data of the assertion.
      * @throws IllegalArgumentException If the parameters are malformed in any way.
      * @throws NoSuchElementException If this authenticator cannot find any matching credential.
+     * @throws MultipleAssertionDataException if more than one credential found for these options.
      *
      * @see <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#sctn-op-get-assertion">The authenticatorGetAssertion Operation</a>
      */
@@ -84,7 +86,7 @@ public interface Authenticator {
             String rpId, byte[] hash,
             List<PublicKeyCredentialDescriptor> allowedCredentialDescriptorList,
             boolean requireUserVerification, byte[] extensions
-    ) throws IllegalArgumentException, NoSuchElementException;
+    ) throws IllegalArgumentException, NoSuchElementException, MultipleAssertionDataException;
 
     /**
      * Returns this authenticator's <a href="https://www.w3.org/TR/2021/REC-webauthn-2-20210408/#sctn-authenticator-attachment-modality">attachment</a>.

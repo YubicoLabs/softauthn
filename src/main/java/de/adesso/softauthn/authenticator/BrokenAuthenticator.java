@@ -9,6 +9,7 @@ import com.yubico.webauthn.data.RelyingPartyIdentity;
 import com.yubico.webauthn.data.UserIdentity;
 import de.adesso.softauthn.Authenticator;
 import de.adesso.softauthn.AuthenticatorAssertionData;
+import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -67,7 +68,7 @@ public class BrokenAuthenticator implements Authenticator {
     public AuthenticatorAssertionData getAssertion(
             String rpId, byte[] hash, List<PublicKeyCredentialDescriptor> allowedCredentialDescriptorList,
             boolean requireUserVerification, byte[] extensions
-    ) throws IllegalArgumentException, NoSuchElementException {
+    ) throws IllegalArgumentException, NoSuchElementException, MultipleAssertionDataException {
         AuthenticatorAssertionData data = basis.getAssertion(rpId, hash, allowedCredentialDescriptorList, requireUserVerification, extensions);
         byte[] fakeSignature = new byte[data.getSignature().size()];
         ThreadLocalRandom.current().nextBytes(fakeSignature);
