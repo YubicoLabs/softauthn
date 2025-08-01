@@ -4,7 +4,12 @@ plugins {
     kotlin("jvm")
 }
 
-version = "0.0.1"
+val VERSION = "0.0.1"
+val GROUP = "com.github.yubicolabs"
+val NAME = "softauthn"
+
+version = VERSION
+group = GROUP
 
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
@@ -22,6 +27,18 @@ java {
     withJavadocJar()
     sourceCompatibility = JavaVersion.VERSION_22
     targetCompatibility = JavaVersion.VERSION_22
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = GROUP
+            artifactId = NAME
+            version = VERSION
+
+            from(components["java"])
+        }
+    }
 }
 
 tasks.getByName<Test>("test") {
