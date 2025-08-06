@@ -378,11 +378,63 @@ public class WebAuthnAuthenticator implements Authenticator {
         return supportsUserVerification;
     }
 
-    public record SourceKey(
-            String rpId,
-            ByteArray userHandle,
-            String userName,
-            String userDisplayName
-    ) {
+    public static final class SourceKey {
+        private final String rpId;
+        private final ByteArray userHandle;
+        private final String userName;
+        private final String userDisplayName;
+
+        public SourceKey(
+                String rpId,
+                ByteArray userHandle,
+                String userName,
+                String userDisplayName
+        ) {
+            this.rpId = rpId;
+            this.userHandle = userHandle;
+            this.userName = userName;
+            this.userDisplayName = userDisplayName;
+        }
+
+        public String getRpId() {
+            return rpId;
+        }
+
+        public ByteArray getUserHandle() {
+            return userHandle;
+        }
+
+        public String getUserName() {
+            return userName;
+        }
+
+        public String getUserDisplayName() {
+            return userDisplayName;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == this) return true;
+            if (obj == null || obj.getClass() != this.getClass()) return false;
+            var that = (SourceKey) obj;
+            return Objects.equals(this.rpId, that.rpId) &&
+                    Objects.equals(this.userHandle, that.userHandle) &&
+                    Objects.equals(this.userName, that.userName) &&
+                    Objects.equals(this.userDisplayName, that.userDisplayName);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(rpId, userHandle, userName, userDisplayName);
+        }
+
+        @Override
+        public String toString() {
+            return "SourceKey[" +
+                    "rpId=" + rpId + ", " +
+                    "userHandle=" + userHandle + ", " +
+                    "userName=" + userName + ", " +
+                    "userDisplayName=" + userDisplayName + ']';
+        }
     }
 }
