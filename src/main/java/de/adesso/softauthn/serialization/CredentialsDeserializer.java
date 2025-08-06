@@ -71,8 +71,12 @@ public class CredentialsDeserializer extends StdDeserializer<CredentialsContaine
                 jsonAuthenticator.get("storedSources").elements().forEachRemaining(jsonSource -> {
                     try {
                         final var rpId = jsonSource.get("key.rpId").asText();
+
                         final var userHandle = ByteArray.fromBase64Url(jsonSource.get("key.userHandle").asText());
-                        final var key = new WebAuthnAuthenticator.SourceKey(rpId, userHandle);
+                        final var userName = jsonSource.get("key.userName").asText();
+                        final var userDisplayName = jsonSource.get("key.userDisplayName").asText();
+
+                        final var key = new WebAuthnAuthenticator.SourceKey(rpId, userHandle, userName, userDisplayName);
 
                         final var value = PublicKeyCredentialSource.deserialize(
                                 ByteArray.fromBase64(jsonSource.get("value").asText())

@@ -151,12 +151,20 @@ public class WebAuthnAuthenticator implements Authenticator {
 
         byte[] credentialId;
         if (requireResidentKey) {
+            final var sourceKey = new SourceKey(
+                    rpEntity.getId(),
+                    userHandle,
+                    userEntity.getName(),
+                    userEntity.getDisplayName()
+            );
+
             // section 7.3 of
             // https://fidoalliance.org/specs/fido-uaf-v1.1-id-20170202/fido-uaf-authnr-cmds-v1.1-id-20170202.html
             credentialId = new byte[32];
             random.nextBytes(credentialId);
             credentialSource.setId(new ByteArray(credentialId));
-            storedSources.put(new SourceKey(rpEntity.getId(), userHandle), credentialSource);
+
+            storedSources.put(sourceKey, credentialSource);
         } else {
             credentialId = credentialSource.serialize();
         }
@@ -370,13 +378,11 @@ public class WebAuthnAuthenticator implements Authenticator {
         return supportsUserVerification;
     }
 
-    public static class SourceKey {
-        public final String rpId;
-        public final ByteArray userHandle;
-
-        public SourceKey(String rpId, ByteArray userHandle) {
-            this.rpId = rpId;
-            this.userHandle = userHandle;
-        }
+    public record SourceKey(
+            String rpId,
+            ByteArray userHandle,
+            String userName,
+            String userDisplayName
+    ) {
     }
 }

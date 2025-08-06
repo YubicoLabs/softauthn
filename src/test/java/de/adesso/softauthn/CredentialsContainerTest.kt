@@ -205,7 +205,7 @@ class CredentialsContainerTest {
         }
     }
 
-    fun createTestData() {
+    fun create1010TestData() {
         val container = CredentialsContainer(origin, listOf(authenticator))
 
         for (i in 0 until 10) {
@@ -256,7 +256,35 @@ class CredentialsContainerTest {
         }
 
         val foo = container.serialize()
-        val f = File.createTempFile("testdata", ".json")
+        val f = File.createTempFile("testdata-10:10-", ".json")
+        print("Saved temp data as ${f.absoluteFile}. Enjoy")
+        f.writeBytes(foo)
+    }
+
+    fun create255TestData() {
+        val container = CredentialsContainer(origin, listOf(authenticator))
+
+        for (i in 0 until 255) {
+            val alteredOption =
+                options.toBuilder().user(
+                    options.user
+                        .toBuilder()
+                        .id(
+                            YubiByteArray(
+                                ByteArray(32).apply { set(0, i.toByte()) }
+                            )
+                        )
+                        .name("tester #$i")
+                        .displayName("tester number $i")
+                        .build()
+                ).build();
+
+            val credential = container.create(alteredOption)
+            println("Credential created: $credential.")
+        }
+
+        val foo = container.serialize()
+        val f = File.createTempFile("testdata-255-", ".json")
         print("Saved temp data as ${f.absoluteFile}. Enjoy")
         f.writeBytes(foo)
     }
@@ -264,7 +292,8 @@ class CredentialsContainerTest {
 
 // MAIN FOR CREATING SAMPLE DATA
 fun main() {
-    CredentialsContainerTest().createTestData()
+    CredentialsContainerTest().create1010TestData()
+    CredentialsContainerTest().create255TestData()
 }
 
 private fun URL.toOrigin() = Origin("https", host, -1, null)
