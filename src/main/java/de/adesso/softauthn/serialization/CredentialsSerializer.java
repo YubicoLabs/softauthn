@@ -42,8 +42,10 @@ public class CredentialsSerializer extends StdSerializer<CredentialsContainer> {
                 for (final var key : web.storedSources.keySet()) {
                     jsonGenerator.writeStartObject();
 
-                    jsonGenerator.writeObjectField("key.rpId", key.rpId);
-                    jsonGenerator.writeStringField("key.userHandle", key.userHandle.getBase64());
+                    jsonGenerator.writeObjectField("key.rpId", key.rpId());
+                    jsonGenerator.writeStringField("key.userHandle", key.userHandle().getBase64Url());
+                    jsonGenerator.writeStringField("key.userName", key.userName());
+                    jsonGenerator.writeStringField("key.userDisplayName", key.userDisplayName());
 
                     final var value = web.storedSources.get(key);
                     jsonGenerator.writeObjectField("value", value.serialize());
