@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.upokecenter.cbor.CBORObject;
 import com.yubico.webauthn.data.*;
 import com.yubico.webauthn.data.exception.Base64UrlException;
+import de.adesso.softauthn.authenticator.WebAuthnAuthenticator;
 import de.adesso.softauthn.authenticator.functional.exception.MultipleAssertionDataException;
 import de.adesso.softauthn.authenticator.functional.exception.MutiplePublicKeysFoundException;
 import de.adesso.softauthn.serialization.CredentialsDeserializer;
@@ -392,5 +393,27 @@ public class CredentialsContainer {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    /**
+     * return a user associated with the given user handle.
+     */
+    public UserIdentity getUser(ByteArray handle) {
+        for (final var authenticator : authenticators) {
+            if (authenticator instanceof WebAuthnAuthenticator webauth) {
+                for (final var source : webauth.storedSources.keySet()) {
+                    if (source.userHandle().equals(handle)) {
+                        return UserIdentity
+                                .builder()
+                                .name(source.userName())
+                                .displayName(source.userDisplayName())
+                                .id(handle)
+                                .build();
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

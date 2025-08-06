@@ -95,6 +95,23 @@ class CredentialsContainerTest {
     }
 
     @Test
+    fun findUser() {
+        javaClass.classLoader.getResourceAsStream("255-credentials.json").use { stream ->
+            val json = stream.readAllBytes().toString(Charsets.UTF_8)
+            val container = CredentialsContainer.deserialize(json.toByteArray())
+
+            val foundUser =
+                container.getUser(YubiByteArray.fromBase64Url("TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+            assertNotNull(foundUser)
+
+            assertEquals(
+                76,
+                foundUser.id.bytes.sum()
+            )
+        }
+    }
+
+    @Test
     fun load255Credentials() {
         javaClass.classLoader.getResourceAsStream("255-credentials.json").use { stream ->
             val json = stream.readAllBytes().toString(Charsets.UTF_8)
