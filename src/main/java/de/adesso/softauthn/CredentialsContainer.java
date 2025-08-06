@@ -402,11 +402,11 @@ public class CredentialsContainer {
         for (final var authenticator : authenticators) {
             if (authenticator instanceof WebAuthnAuthenticator webauth) {
                 for (final var source : webauth.storedSources.keySet()) {
-                    if (source.userHandle().equals(handle)) {
+                    if (source.getUserHandle().equals(handle)) {
                         return UserIdentity
                                 .builder()
-                                .name(source.userName())
-                                .displayName(source.userDisplayName())
+                                .name(source.getUserName())
+                                .displayName(source.getUserDisplayName())
                                 .id(handle)
                                 .build();
                     }
