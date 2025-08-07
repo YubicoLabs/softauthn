@@ -14,7 +14,6 @@ import com.yubico.webauthn.data.ByteArray as YubiByteArray
 
 class CredentialsContainerTest {
     val authenticator = Authenticators.yubikey5Nfc().build()
-    val origin = URL("https://www.yubico.com").toOrigin()
     val options = PublicKeyCredentialCreationOptions
         .builder()
         .rp(
@@ -48,16 +47,17 @@ class CredentialsContainerTest {
 
     @Test
     fun createCredential() {
-        val container = CredentialsContainer(origin, listOf(authenticator))
+        val container = CredentialsContainer(listOf(authenticator))
         val credential = container.create(options)
 
         assertNotNull(credential)
         assertEquals(PublicKeyCredentialType.PUBLIC_KEY, credential.type)
+        assertEquals(options.rp.id, credential.response.clientData.origin)
     }
 
     @Test
     fun getCreatedCredential() {
-        val container = CredentialsContainer(origin, listOf(authenticator))
+        val container = CredentialsContainer(listOf(authenticator))
         val createdCredential = container.create(options)
 
         val credential = container.get(
@@ -81,7 +81,7 @@ class CredentialsContainerTest {
     @OptIn(ExperimentalStdlibApi::class)
     @Test
     fun storeAndRestoreContainer() {
-        val container = CredentialsContainer(origin, listOf(authenticator))
+        val container = CredentialsContainer(listOf(authenticator))
         container.create(options)
 
         val blob = container.serialize()
@@ -223,7 +223,7 @@ class CredentialsContainerTest {
     }
 
     fun create1010TestData() {
-        val container = CredentialsContainer(origin, listOf(authenticator))
+        val container = CredentialsContainer(listOf(authenticator))
 
         for (i in 0 until 10) {
             val alteredOption =
@@ -279,7 +279,7 @@ class CredentialsContainerTest {
     }
 
     fun create255TestData() {
-        val container = CredentialsContainer(origin, listOf(authenticator))
+        val container = CredentialsContainer(listOf(authenticator))
 
         for (i in 0 until 255) {
             val alteredOption =

@@ -17,15 +17,6 @@ public class CredentialsSerializer extends StdSerializer<CredentialsContainer> {
     public void serialize(CredentialsContainer credentialsContainer, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
         jsonGenerator.writeStartObject();
 
-        jsonGenerator.writeObjectField("origin.scheme", credentialsContainer.origin.getScheme());
-        jsonGenerator.writeObjectField("origin.host", credentialsContainer.origin.getHost());
-        if (credentialsContainer.origin.getPort().isPresent()) {
-            jsonGenerator.writeObjectField("origin.port", credentialsContainer.origin.getPort());
-        }
-        if (credentialsContainer.origin.getDomain().isPresent()) {
-            jsonGenerator.writeObjectField("origin.domain", credentialsContainer.origin.getDomain());
-        }
-
         jsonGenerator.writeArrayFieldStart("authenticators");
         for (final var authenticator : credentialsContainer.authenticators) {
             if (authenticator instanceof WebAuthnAuthenticator web) {
