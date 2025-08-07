@@ -36,8 +36,6 @@ import java.util.*;
  * @see <a href="https://developer.mozilla.org/en-US/docs/Web/API/CredentialsContainer">CredentialsContainer</a>
  */
 public class CredentialsContainer {
-
-    public final Origin origin;
     public final List<Authenticator> authenticators;
 
     private final ObjectMapper mapper;
@@ -45,12 +43,10 @@ public class CredentialsContainer {
     /**
      * Creates a new CredentialsContainer with the specified {@link Origin} and a list of "known" authenticators.
      *
-     * @param origin         The origin of the emulated "context".
      * @param authenticators A list of authenticators that are available to this container.
      *                       This list will be queried to create/get WebAuthn credentials.
      */
-    public CredentialsContainer(Origin origin, List<? extends Authenticator> authenticators) {
-        this.origin = origin;
+    public CredentialsContainer(List<? extends Authenticator> authenticators) {
         this.authenticators = new ArrayList<>(authenticators);
         this.mapper = new ObjectMapper();
     }
@@ -69,23 +65,22 @@ public class CredentialsContainer {
     public PublicKeyCredential<AuthenticatorAttestationResponse, ClientRegistrationExtensionOutputs> create(
             PublicKeyCredentialCreationOptions publicKey
     ) {
-        return create(origin, publicKey, true);
+        return create(publicKey, true);
     }
 
     private PublicKeyCredential<AuthenticatorAttestationResponse, ClientRegistrationExtensionOutputs> create(
-            Origin origin,
             PublicKeyCredentialCreationOptions options,
             boolean sameOriginWithAncestors
     ) {
 
-        checkParameters(options.getRp().getId(), origin, sameOriginWithAncestors);
+        checkParameters(options.getRp().getId(), sameOriginWithAncestors);
         // 9-10.
         List<PublicKeyCredentialParameters> credTypesAndPubKeyAlgs = options.getPubKeyCredParams().isEmpty()
                 ? Arrays.asList(PublicKeyCredentialParameters.builder().alg(COSEAlgorithmIdentifier.ES256).build(),
                 PublicKeyCredentialParameters.builder().alg(COSEAlgorithmIdentifier.RS256).build())
                 : options.getPubKeyCredParams();
 
-        ClientData clientData = collectClientData("webauthn.create", options.getChallenge(), origin, sameOriginWithAncestors);
+        ClientData clientData = collectClientData("webauthn.create", options.getChallenge(), options.getRp().getId(), sameOriginWithAncestors);
 
         for (Authenticator authenticator : authenticators) {
             if (options.getAuthenticatorSelection()
@@ -210,14 +205,14 @@ public class CredentialsContainer {
     public PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> get(
             PublicKeyCredentialRequestOptions publicKey
     ) throws MutiplePublicKeysFoundException {
-        return discoverFromExternalSource(origin, publicKey, true);
+        return discoverFromExternalSource(publicKey, true);
     }
 
     private PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> discoverFromExternalSource(
-            Origin origin, PublicKeyCredentialRequestOptions options, boolean sameOriginWithAncestors
+            PublicKeyCredentialRequestOptions options, boolean sameOriginWithAncestors
     ) throws MutiplePublicKeysFoundException {
-        checkParameters(options.getRpId(), origin, sameOriginWithAncestors);
-        ClientData clientData = collectClientData("webauthn.get", options.getChallenge(), origin, sameOriginWithAncestors);
+        checkParameters(options.getRpId(), sameOriginWithAncestors);
+        ClientData clientData = collectClientData("webauthn.get", options.getChallenge(), options.getRpId(), sameOriginWithAncestors);
         for (Authenticator authenticator : authenticators) {
             if (options.getUserVerification()
                     .map(UserVerificationRequirement.REQUIRED::equals)
@@ -297,7 +292,7 @@ public class CredentialsContainer {
                 .build();
     }
 
-    private void checkParameters(String rpId, Origin origin, boolean sameOriginWithAncestors) {
+    private void checkParameters(String rpId, boolean sameOriginWithAncestors) {
         // 2.
         if (!sameOriginWithAncestors) {
             throw new IllegalArgumentException("NotAllowedError (sameOriginWithAncestors)");
@@ -305,11 +300,10 @@ public class CredentialsContainer {
         // 4. skip irrelevant timeout steps
         // 5. skip irrelevant user id check
         // 6.
-        if (origin == null) {
+        if (rpId == null) {
             throw new IllegalArgumentException("NotAllowedError (opaque origin)");
         }
         // 7.
-        String effectiveDomain = origin.effectiveDomain();
         // TODO: 25/08/2022 validate domain
         // 8. skip rpId check, it's always set by Relying Party
     }
@@ -319,12 +313,12 @@ public class CredentialsContainer {
         return new HashMap<>();
     }
 
-    private ClientData collectClientData(String type, ByteArray challenge, Origin origin, boolean sameOriginWithAncestors) {
+    private ClientData collectClientData(String type, ByteArray challenge, String rpId, boolean sameOriginWithAncestors) {
 
         ObjectNode collectedClientData = mapper.createObjectNode()
                 .put("type", type)
                 .put("challenge", challenge.getBase64Url())
-                .put("origin", origin.serialized())
+                .put("origin", rpId)
                 .put("crossOrigin", !sameOriginWithAncestors);
 
         byte[] clientDataJson;

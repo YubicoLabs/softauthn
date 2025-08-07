@@ -32,12 +32,6 @@ public class CredentialsDeserializer extends StdDeserializer<CredentialsContaine
     @Override
     public CredentialsContainer deserialize(JsonParser p, DeserializationContext ctxt) throws IOException, JacksonException {
         JsonNode jsonNode = p.readValueAsTree();
-        final var scheme = jsonNode.get("origin.scheme").asText();
-        final var host = jsonNode.get("origin.host").asText();
-        final var port = jsonNode.has("origin.port") ? jsonNode.get("origin.port").asInt() : -1;
-        final var domain = jsonNode.has("origin.domain") ? jsonNode.get("origin.domain").asText() : null;
-
-        final var origin = new Origin(scheme, host, port, domain);
 
         final var authenticators = new ArrayList<Authenticator>();
         jsonNode.get("authenticators").elements().forEachRemaining(jsonAuthenticator -> {
@@ -127,7 +121,7 @@ public class CredentialsDeserializer extends StdDeserializer<CredentialsContaine
         });
 
 
-        final var result = new CredentialsContainer(origin, authenticators);
+        final var result = new CredentialsContainer(authenticators);
         return result;
     }
 }
