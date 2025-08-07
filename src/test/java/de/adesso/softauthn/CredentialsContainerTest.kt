@@ -4,12 +4,13 @@ package de.adesso.softauthn
 import com.yubico.webauthn.data.*
 import de.adesso.softauthn.authenticator.WebAuthnAuthenticator
 import de.adesso.softauthn.authenticator.functional.exception.MutiplePublicKeysFoundException
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertNotNull
 import org.junit.jupiter.api.fail
 import java.io.File
 import java.net.URL
+import kotlin.jvm.optionals.getOrNull
 import com.yubico.webauthn.data.ByteArray as YubiByteArray
 
 class CredentialsContainerTest {
@@ -23,7 +24,7 @@ class CredentialsContainerTest {
                 .build()
         ).user(
             UserIdentity.builder()
-                .name("usernname")
+                .name("username")
                 .displayName("user display")
                 .id("idnumber we don't say".encodeToByteArray().toYubi())
                 .build()
@@ -53,6 +54,75 @@ class CredentialsContainerTest {
         assertNotNull(credential)
         assertEquals(PublicKeyCredentialType.PUBLIC_KEY, credential.type)
         assertEquals(options.rp.id, credential.response.clientData.origin)
+    }
+
+    @Test
+    fun createdCredentialsHaveDifferentUserNames() {
+        val container = CredentialsContainer(listOf(authenticator))
+        container.create(options)
+        val peteId = "pete".encodeToByteArray().toYubi()
+        container.create(
+            options.toBuilder().user(
+                options.user.toBuilder()
+                    .name("Pete")
+                    .displayName("Peg Nose Pete")
+                    .id(peteId)
+                    .build()
+            ).build()
+        )
+
+        val blob = container.serialize()
+
+        val newContainer = CredentialsContainer.deserialize(blob)
+
+        val userA = newContainer.getUser(options.user.id)
+        val userB = newContainer.getUser(peteId)
+
+        assertNotNull(userA)
+        assertNotNull(userB)
+
+        assertNotEquals(userA.name, userB.name)
+
+        assertEquals(userA.name, options.user.name)
+        assertEquals(userB.name, "Pete")
+    }
+
+    @Test
+    fun createdCredentialsHaveDifferentUserNamesInMultipleCredentialResponse() {
+        val container = CredentialsContainer(listOf(authenticator))
+        container.create(options)
+
+        val peteId = "pete".encodeToByteArray().toYubi()
+        container.create(
+            options.toBuilder().user(
+                options.user.toBuilder()
+                    .name("Pete")
+                    .displayName("Peg Nose Pete")
+                    .id(peteId)
+                    .build()
+            ).build()
+        )
+
+        var thrown = false
+        try {
+            container.get(
+                PublicKeyCredentialRequestOptions.builder()
+                    .challenge(options.challenge)
+                    .rpId(options.rp.id)
+                    .build()
+            )
+        } catch (e: MutiplePublicKeysFoundException) {
+            val names = e.publicKeys.map {
+                container.getUser(it.response.userHandle.get()).name
+            }
+
+            assertEquals(2, names.size)
+            assertTrue("username" in names)
+            assertTrue("Pete" in names)
+            thrown = true
+        }
+
+        assertTrue(thrown)
     }
 
     @Test
@@ -112,6 +182,56 @@ class CredentialsContainerTest {
     }
 
     @Test
+    fun findsCredentialForOverspecifiedOptions() {
+        javaClass.classLoader.getResourceAsStream("255-credentials.json").use { stream ->
+            val json = stream.readAllBytes().toString(Charsets.UTF_8)
+            val container = CredentialsContainer.deserialize(json.toByteArray())
+            val webAuthnAuthenticator = container.authenticators.first() as WebAuthnAuthenticator
+            val sourceKey = webAuthnAuthenticator.storedSources.keys.firstOrNull {
+                it.userHandle == YubiByteArray.fromBase64Url("YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            }
+            assertNotNull(sourceKey)
+            val credentialId = webAuthnAuthenticator.storedSources.get(sourceKey)?.id
+
+            val found = container.get(
+                PublicKeyCredentialRequestOptions.builder()
+                    .challenge(
+                        YubiByteArray.fromBase64Url("V0UdyxcYpa6PoKDMYGBvIQ")
+                    )
+                    .rpId("rp id")
+                    .userVerification(
+                        UserVerificationRequirement.REQUIRED,
+                    )
+                    .allowCredentials(
+                        listOf(
+                            PublicKeyCredentialDescriptor.builder()
+                                .id(credentialId)
+                                .transports(
+                                    setOf(
+                                        AuthenticatorTransport.USB,
+                                        AuthenticatorTransport.NFC,
+                                        AuthenticatorTransport.BLE,
+                                        AuthenticatorTransport.HYBRID,
+                                        AuthenticatorTransport.INTERNAL,
+                                    )
+                                )
+                                .type(PublicKeyCredentialType.PUBLIC_KEY)
+                                .build()
+
+                        )
+                    ).build()
+            )
+
+            assertNotNull(found)
+
+            assertEquals(
+                YubiByteArray.fromBase64Url("YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+                found.response.userHandle.get()
+            )
+        }
+    }
+
+    @Test
     fun load255Credentials() {
         javaClass.classLoader.getResourceAsStream("255-credentials.json").use { stream ->
             val json = stream.readAllBytes().toString(Charsets.UTF_8)
@@ -147,7 +267,6 @@ class CredentialsContainerTest {
             } catch (e: Exception) {
                 fail(e.message)
             }
-
         }
     }
 
@@ -157,6 +276,12 @@ class CredentialsContainerTest {
             val json = stream.readAllBytes().toString(Charsets.UTF_8)
 
             val container = CredentialsContainer.deserialize(json.toByteArray())
+            val webAuthnAuthenticator = container.authenticators.first() as WebAuthnAuthenticator
+            val sourceKey = webAuthnAuthenticator.storedSources.keys.firstOrNull {
+                it.userHandle == YubiByteArray.fromBase64Url("YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            }
+            assertNotNull(sourceKey)
+            val credentialId = webAuthnAuthenticator.storedSources.get(sourceKey)?.id
 
             val challenge = ByteArray(32) { it.toByte() }
             val options = PublicKeyCredentialRequestOptions.builder()
@@ -165,15 +290,18 @@ class CredentialsContainerTest {
                 .allowCredentials(
                     listOf(
                         PublicKeyCredentialDescriptor.builder()
-                            .id(
-                                YubiByteArray.fromBase64Url("pGNrZXmmAQIDJiABIVgg4ODUFwB2ZNYG29QW1P9LQlTJrUwmXee8ugYYRQ5n-tYiWCAemroxqZlv7OA8QUwqcHx35xWs7KC9ZMulu6Owie3lgiNYIMJAJ-mAwd9-iP7LeBT_I1MGQUpUm87zIVF90oo_L9PeZHJwSWRlcnAgaWRkdHlwZQBkdXNlclgg9_f39_f39_f39_f39_f39_f39_f39_f39_f39_f39_c")
-                            )
+                            .id(credentialId)
                             .build()
                     )
                 ).build()
 
             val credential = container.get(options)
+
             assertNotNull(credential)
+            assertEquals(
+                YubiByteArray.fromBase64Url("YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+                credential.response.userHandle.getOrNull(),
+            )
         }
     }
 
@@ -312,7 +440,5 @@ fun main() {
     CredentialsContainerTest().create1010TestData()
     CredentialsContainerTest().create255TestData()
 }
-
-private fun URL.toOrigin() = Origin("https", host, -1, null)
 
 private fun ByteArray.toYubi(): YubiByteArray = YubiByteArray(this)
