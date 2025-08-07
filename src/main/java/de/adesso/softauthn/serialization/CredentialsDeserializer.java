@@ -82,13 +82,6 @@ public class CredentialsDeserializer extends StdDeserializer<CredentialsContaine
                 final var signatureCounter = new PerCredentialSignatureCounter();
                 storedSources.forEach((key, value) -> signatureCounter.increment(value.getId()));
 
-                final var credentialSelection = new Function<Set<PublicKeyCredentialSource>, PublicKeyCredentialSource>() {
-                    @Override
-                    public PublicKeyCredentialSource apply(Set<PublicKeyCredentialSource> publicKeyCredentialSources) {
-                        return null;
-                    }
-                };
-
                 final var webauth = WebAuthnAuthenticator.builder()
                         .aaguid(aaguid.getBytes())
                         .attachment(attachment)
