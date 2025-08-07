@@ -41,7 +41,7 @@ public class CredentialsContainer {
     private final ObjectMapper mapper;
 
     /**
-     * Creates a new CredentialsContainer with the specified {@link Origin} and a list of "known" authenticators.
+     * Creates a new CredentialsContainer with a list of "known" authenticators.
      *
      * @param authenticators A list of authenticators that are available to this container.
      *                       This list will be queried to create/get WebAuthn credentials.

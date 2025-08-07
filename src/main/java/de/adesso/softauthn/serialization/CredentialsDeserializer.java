@@ -11,7 +11,6 @@ import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
 import com.yubico.webauthn.data.exception.Base64UrlException;
 import de.adesso.softauthn.Authenticator;
 import de.adesso.softauthn.CredentialsContainer;
-import de.adesso.softauthn.Origin;
 import de.adesso.softauthn.PublicKeyCredentialSource;
 import de.adesso.softauthn.authenticator.WebAuthnAuthenticator;
 import de.adesso.softauthn.counter.PerCredentialSignatureCounter;
@@ -20,8 +19,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 public class CredentialsDeserializer extends StdDeserializer<CredentialsContainer> {
@@ -84,13 +81,6 @@ public class CredentialsDeserializer extends StdDeserializer<CredentialsContaine
 
                 final var signatureCounter = new PerCredentialSignatureCounter();
                 storedSources.forEach((key, value) -> signatureCounter.increment(value.getId()));
-
-                final var credentialSelection = new Function<Set<PublicKeyCredentialSource>, PublicKeyCredentialSource>() {
-                    @Override
-                    public PublicKeyCredentialSource apply(Set<PublicKeyCredentialSource> publicKeyCredentialSources) {
-                        return null;
-                    }
-                };
 
                 final var webauth = WebAuthnAuthenticator.builder()
                         .aaguid(aaguid.getBytes())
